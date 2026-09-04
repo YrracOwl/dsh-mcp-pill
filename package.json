@@ -1,7 +1,7 @@
 {
   "name": "dsh-mcp-pill",
   "version": "0.2.1",
-  "description": "Global MCP connection status pill for the DSH web UI, with an official Settings card toggle (pill hidden by default). Official bundle form: host half serves /api/mcp-pill/* RPC; client half is a __ModuleLoader__ web bundle (no tapIndex injection).",
+  "description": "EN: Lifecycle-safe MCP status pill and Settings card for DeepSeek Harness Web. ZH: 面向 DeepSeek Harness Web 的生命周期安全 MCP 状态胶囊与设置卡片。",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

@@ -1,5 +1,13 @@
 # dsh-mcp-pill
 
+## English
+
+A lifecycle-safe MCP connection status pill for DeepSeek Harness Web. It exposes loopback-fenced status/toggle RPC, an official Settings card, and a composer-seat pill that stays hidden until enabled. DSH 0.1.2+ fine-grained `remote.settings` is preferred; older RC hosts use the legacy connection API.
+
+## 中文
+
+用于 DeepSeek Harness Web 的生命周期安全 MCP 连接状态胶囊。提供本机同源 RPC、官方设置卡片和输入框状态胶囊；优先使用 DSH 0.1.2+ 的 `remote.settings`，旧版 RC 自动回退到 connection API。
+
 Global MCP connection status pill for the DSH web UI — official bundle form
 (host RPC + `__ModuleLoader__` client, no tapIndex injection).
 
