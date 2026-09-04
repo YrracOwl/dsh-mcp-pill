@@ -30,6 +30,13 @@ jobs:
           cache: npm
           cache-dependency-path: package.json
 
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install --global npm@latest
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+
       - name: Install dependencies without lifecycle scripts
         run: npm install --no-package-lock --ignore-scripts
 
