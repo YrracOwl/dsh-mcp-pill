@@ -2,6 +2,8 @@
 
 ## English
 
+**Current release: 0.2.2** — Remote settings are capability-detected and optional, so older DSH RC hosts continue to start the plugin.
+
 A lifecycle-safe MCP connection status pill for DeepSeek Harness Web. It exposes loopback-fenced status/toggle RPC, an official Settings card, and a composer-seat pill that stays hidden until enabled. DSH 0.1.2+ fine-grained `remote.settings` is preferred; older RC hosts use the legacy connection API.
 
 ## 中文
