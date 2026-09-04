@@ -1,0 +1,41 @@
+{
+  "name": "dsh-mcp-pill",
+  "version": "0.2.1",
+  "description": "Global MCP connection status pill for the DSH web UI, with an official Settings card toggle (pill hidden by default). Official bundle form: host half serves /api/mcp-pill/* RPC; client half is a __ModuleLoader__ web bundle (no tapIndex injection).",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./config": "./lib/config.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-api-remotes"]
+    }
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/YrracOwl/dsh-mcp-pill.git" },
+  "homepage": "https://github.com/YrracOwl/dsh-mcp-pill#readme",
+  "bugs": { "url": "https://github.com/YrracOwl/dsh-mcp-pill/issues" },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

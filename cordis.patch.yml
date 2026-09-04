@@ -1,0 +1,10 @@
+# dsh-mcp-pill bundle patch
+#
+# Mounts the host half (RPC) + client half (web bundle). The `patchFile` config
+# tells the host which cordis.patch.yml holds the dsh-mcp-client rows; it is
+# resolved against the profile working directory (dsh web runs from the profile).
+- insert:
+    - id: mcp-pill
+      name: 'dsh-mcp-pill'
+      config:
+        patchFile: 'cordis.patch.yml'
