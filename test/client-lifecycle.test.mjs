@@ -30,7 +30,7 @@ test('registers an official-style settings card under settings.plugin.item', () 
   assert.match(source, /expectedRevision/)
   assert.match(source, /\{ path: \['pill', 'enabled'\], kind: 'bool', label: '显示状态胶囊'/)
   assert.match(source, /默认关闭/)
-  assert.match(source, /exports\.inject = \['slots', 'settingsScope', 'connection', 'remote\.settings'\]/)
+  assert.match(source, /exports\.inject = \['slots', 'settingsScope', 'connection'\]/)
 })
 
 test('card style tag is lifecycle-owned', () => {
