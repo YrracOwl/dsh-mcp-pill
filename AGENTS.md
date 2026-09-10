@@ -43,3 +43,7 @@ After `dsh plugin --profile web add .`, verify both RPC routes and the real `308
 - A visible pill does not prove the Host route or target `patchFile` is correct.
 - Avoid extreme z-index and body-level mounting; these previously caused the pill to cover product overlays.
 - The default `patchFile: cordis.patch.yml` is profile-relative, not package-relative.
+
+## Documentation
+
+- `README.md` is the only user-facing install surface: keep its recommended `dsh plugin --profile web add dsh-mcp-pill` command, the required DSH Web restart, and the「显示状态胶囊」default-off note current whenever the install or visibility behavior changes.
