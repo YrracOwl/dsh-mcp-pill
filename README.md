@@ -2,7 +2,7 @@
 
 ## English
 
-**Current release: 0.2.3** — Remote settings are capability-detected and optional, so older DSH RC hosts continue to start the plugin.
+**Current release: 0.2.5** — Remote settings are capability-detected and optional, so older DSH RC hosts continue to start the plugin. This release adds a documented install path: `dsh plugin --profile web add dsh-mcp-pill`.
 
 A lifecycle-safe MCP connection status pill for DeepSeek Harness Web. It exposes loopback-fenced status/toggle RPC, an official Settings card, and a composer-seat pill that stays hidden until enabled. DSH 0.1.2+ fine-grained `remote.settings` is preferred; older RC hosts use the legacy connection API.
 
@@ -30,8 +30,19 @@ Global MCP connection status pill for the DSH web UI — official bundle form
 
 ## Install
 
-Add to the profile's `package.json` dependencies (`link:` for local dev) and
-to `dsh.profile.bundles`, then `pnpm install` and restart `dsh web`.
+```powershell
+dsh plugin --profile web add dsh-mcp-pill
+```
+
+Restart the existing DSH Web process afterwards: the Host scans the browser plugin roster at startup, so the pill and its Settings card appear only after that restart. Then open **Settings → Plugins → MCP 状态胶囊** and turn on「显示状态胶囊」— the pill is hidden by default.
+
+Local development, from this package directory:
+
+```powershell
+dsh plugin --profile web add .
+```
+
+Either form records the package in the profile's `dsh.profile.bundles`, which is what mounts the Host half and serves the client bundle.
 
 ## Config
 
