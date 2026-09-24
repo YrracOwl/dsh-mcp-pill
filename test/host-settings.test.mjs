@@ -104,6 +104,19 @@ test('register validate wrapper throws on invalid settings', () => {
   assert.doesNotThrow(() => validate({ pill: { enabled: true } }))
 })
 
+test('0.1.7+ host: no register() on the settings service is tolerated, not thrown', async () => {
+  // DSH 0.1.7-rc.1 removes ctx.settings.register entirely: the namespace becomes
+  // a form derived from the profile entry's Config schema. The host half must
+  // branch instead of calling a missing method, and the routes must still serve.
+  const { ctx, routes } = makeCtx({ settings: {} })
+  apply(ctx, {})
+  assert.ok(routes['/api/mcp-pill/status'])
+  const data = await readStatus(routes['/api/mcp-pill/status'].handler)
+  assert.equal(data.ok, true)
+  // Default-off is preserved on the newer host too.
+  assert.deepEqual(data.pill, { enabled: false })
+})
+
 test('validateSettings returns { ok, errors } and falls back to defaults', () => {
   const bad = validateSettings({ pill: { enabled: 'yes' } })
   assert.equal(bad.ok, false)

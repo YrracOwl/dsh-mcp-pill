@@ -7,7 +7,7 @@ const source = fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'ut
 // ── pill mounting: seat-only, waits, no off-page floating pill ──────────────
 
 test('pill mounts only under the composer seat and waits for it', () => {
-  assert.match(source, /ctx\.effect\(\(\) => startPill\(scope\), 'dsh-mcp-pill: composer pill'\)/)
+  assert.match(source, /ctx\.effect\(\(\) => startPill\(\(\) => scope\), 'dsh-mcp-pill: composer pill'\)/)
   assert.match(source, /function findSeat\(\)/)
   assert.match(source, /document\.querySelector\('\[data-composer-seat\]'\)/)
   assert.match(source, /function ensureMounted\(\)/)
@@ -21,7 +21,9 @@ test('pill mounts only under the composer seat and waits for it', () => {
 // ── settings card + default-off visibility gate ──────────────────────────────
 
 test('registers an official-style settings card under settings.plugin.item', () => {
-  assert.match(source, /ctx\.slots\.inject\('settings\.plugin\.item'/)
+  // 卡片必须在设置传输的子上下文上注册（sctx.slots），否则「设置 → 插件」页的账本
+  // 在自己的上下文里读 ctx.slots.entries(...) 会拿到空数组，卡片永远不渲染。
+  assert.match(source, /sctx\.slots\.inject\('settings\.plugin\.item'/)
   assert.match(source, /key: NS/)
   assert.match(source, /label: 'MCP Pill'/)
   assert.match(source, /function SettingsCard/)
@@ -30,7 +32,18 @@ test('registers an official-style settings card under settings.plugin.item', () 
   assert.match(source, /expectedRevision/)
   assert.match(source, /\{ path: \['pill', 'enabled'\], kind: 'bool', label: '显示状态胶囊'/)
   assert.match(source, /默认关闭/)
-  assert.match(source, /exports\.inject = \['slots', 'settingsScope', 'remote', 'remote\.settings'\]/)
+  // NEITHER settings transport may appear in exports.inject: cordis treats every
+  // inject name as a REQUIRED gate (Fiber._refresh() deactivates the fiber when one
+  // has no provider), so declaring the optional transport leaves the plugin
+  // permanently pending and fails Web boot ("waiting for service: configForms").
+  // The optional wait lives in apply as ctx.inject([...], cb).
+  assert.match(source, /exports\.inject = \['slots', 'remote', 'remote\.settings'\]/)
+  assert.match(source, /function resolveSettingsScopeFrom\(ctx, namespace\)/)
+  assert.match(source, /ctx\.inject\(\['settingsScope'\], registerCard\)/)
+  assert.match(source, /ctx\.inject\(\['configForms'\], \(sctx\) => \{ if \(scope === undefined\) registerCard\(sctx\) \}\)/)
+  assert.doesNotMatch(source, /exports\.inject = \[[^\]]*settingsScope/)
+  assert.doesNotMatch(source, /exports\.inject = \[[^\]]*configForms/)
+  assert.doesNotMatch(source, /ctx\.settingsScope\.bind/)
   assert.doesNotMatch(source, /exports\.inject = \['slots', 'settingsScope', 'connection'\]/)
   assert.doesNotMatch(source, /ctx\.get\('connection'\)/)
 })
