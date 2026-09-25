@@ -28,6 +28,10 @@ Global MCP connection status pill for the DSH web UI — official bundle form
   registrations coexist with no version sniffing and the card always has a home;
   values keep flowing through the single settings transport
   (`settingsScope` on ≤ 0.1.5, `configForms` on ≥ 0.1.7).
+- `@deepseek-ai/schemastery` is a private `dependencies` entry whose floor must be
+  ≥ 3.18.4 (`^3.18.4`): the profile hoists an older line (3.18.2) that satisfies a
+  lower floor, and an entry whose Config exposes no volatile field is dropped from
+  `SettingsForms.describe()` — the card then renders nothing with no error.
 - The pill snaps to one of the chat input's four corners (drag to switch);
   the anchor is remembered in `localStorage` (`dsh.mcpPill.anchor`).
 - The pill mounts inside the composer seat (same stacking level as the input
