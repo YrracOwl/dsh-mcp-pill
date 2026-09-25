@@ -40,7 +40,7 @@ Global MCP connection status pill for the DSH web UI — official bundle form
 dsh plugin --profile web add dsh-mcp-pill
 ```
 
-Restart the existing DSH Web process afterwards: the Host scans the browser plugin roster at startup, so the pill and its Settings card appear only after that restart. Then open **Settings → Plugins**, open the `dsh-mcp-pill` entry (`mcp-pill` row) and turn on「显示状态胶囊」— the pill is hidden by default. On DSH ≥ 0.1.7-rc.2 that configuration lives in the row's configure control; on ≤ 0.1.5 it is the card in the Settings → Plugins list.
+Restart the existing DSH Web process afterwards: the Host scans the browser plugin roster at startup, so the pill and its Settings card appear only after that restart. Then open the card — on ≤ 0.1.5 it is a card in **Settings → Plugins**; on ≥ 0.1.7-rc.2 open the **插件** panel (the first sidebar panel icon), find the `dsh-mcp-pill` bundle and use the `mcp-pill` row's configure control — and turn on「显示状态胶囊」; the pill is hidden by default.
 
 Local development, from this package directory:
 
