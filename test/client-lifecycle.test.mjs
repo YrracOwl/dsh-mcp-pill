@@ -1,8 +1,82 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import vm from 'node:vm'
 
 const source = fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
+
+// ── bundle evaluation helpers (real exports, real components) ───────────────
+//
+// The bundle is a browser artifact, but it needs no DOM to LOAD: constructing
+// it only calls __ModuleLoader__.load and require('react'), and `apply` bails
+// out on a document-less host. Evaluating it here gives the real `exports`
+// (inject gate, ROW_CONFIG_KEY) and the real row-config component, which is
+// stronger than matching source text.
+function loadClientPlugin() {
+  let spec = null
+  const sandbox = {
+    // `apply` returns early unless `document` exists; nothing in the SlotRegistrar
+    // path this test drives touches the DOM beyond that probe.
+    document: {},
+    window: { __ModuleLoader__: { load(captured) { spec = captured } } },
+  }
+  vm.createContext(sandbox)
+  vm.runInContext(source, sandbox, { filename: 'lib/client.js' })
+  assert.ok(spec && typeof spec.factory === 'function', 'bundle must call window.__ModuleLoader__.load({ factory })')
+  const react = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }) }
+  const plugin = spec.factory((id) => {
+    if (id === 'react') return react
+    throw new Error('unexpected require(' + id + ')')
+  })
+  return { plugin, react }
+}
+
+// One host shape: which optional services and which Slots are declared. `inject`
+// fires only when every requested name is provided, exactly like cordis.
+function makeCtx({ services = [], slots = [] } = {}) {
+  const registered = []
+  const scope = {
+    getSnapshot: () => ({ status: 'ready', writable: true, value: {}, base: {}, user: {}, revision: 1 }),
+    subscribe: () => () => {},
+  }
+  const ctx = {
+    get(name) {
+      if (name === 'settingsScope' && services.includes('settingsScope')) return { bind: () => scope }
+      if (name === 'configForms' && services.includes('configForms')) return { get: () => scope }
+      return undefined
+    },
+    inject(names, cb) {
+      const list = Array.isArray(names) ? names : [names]
+      if (list.every((name) => name === 'slots' || services.includes(name))) cb(ctx)
+    },
+    effect(fn) {
+      const dispose = fn()
+      return typeof dispose === 'function' ? dispose : () => {}
+    },
+    slots: {
+      inject(slot, cb) {
+        if (!slots.includes(slot)) return () => {}
+        const dispose = cb()
+        return typeof dispose === 'function' ? dispose : () => {}
+      },
+      register(options, component) {
+        registered.push({ options, component })
+        return () => {}
+      },
+    },
+  }
+  return { ctx, registered }
+}
+
+// The key the official plugin-manager looks up: rowConfigKey(pkg.name, row.rowId)
+// = `<package.json#name>#<the row id this package's own cordis.patch.yml declares>`.
+function declaredRowConfigKey() {
+  const manifest = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const patch = fs.readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+  const rowId = patch.match(/^\s*-\s*id:\s*(\S+)\s*$/m)
+  assert.ok(rowId, 'cordis.patch.yml must declare the bundle row id')
+  return `${manifest.name}#${rowId[1]}`
+}
 
 // ── pill mounting: seat-only, waits, no off-page floating pill ──────────────
 
@@ -156,4 +230,97 @@ test('legacy anchor values and interaction semantics are preserved', () => {
   assert.match(source, /restart: true/)
   assert.match(source, /panel\.classList\.toggle\('open', state\.open\)/)
   assert.match(source, /placePanel\(\)/)
+})
+
+// ── the 0.1.7-rc.2 seat: the keyed slot plugins.row.config ──────────────────
+//
+// rc.2 REMOVED settings.plugin.item, so a card left only there renders nowhere
+// and reports nothing. A bundle row's configuration seat is the keyed slot
+// `plugins.row.config`, declared by the official plugin-manager page, and that
+// page shows a row's configure control only while its registration ledger holds
+// the exact `<package name>#<row id>` key. Both seats are registered, because
+// each fires only where its own slot is declared.
+
+test('rc.2: the card also registers on the keyed plugins.row.config seat', () => {
+  assert.match(source, /sctx\.slots\.inject\('plugins\.row\.config', \(\) => sctx\.slots\.register\(\{/)
+  assert.match(source, /name: 'plugins\.row\.config'/)
+  assert.match(source, /key: ROW_CONFIG_KEY/)
+  // the wait on `slots` is NON-GATING, and the legacy seat is untouched
+  assert.match(source, /ctx\.inject\(\['slots'\], registerRowConfig\)/)
+  assert.match(source, /sctx\.slots\.inject\('settings\.plugin\.item'/)
+  // summary renders a one-liner, not the form
+  assert.match(source, /props\.view === 'summary'/)
+  assert.match(source, /dmpRowSummary/)
+  // the optional, host-owned `form` prop is NOT a second read/write path
+  assert.doesNotMatch(source, /props\.form/)
+  assert.doesNotMatch(source, /\.form\b/)
+})
+
+test('rc.2: ROW_CONFIG_KEY is exactly `<package name>#<row id in cordis.patch.yml>`', () => {
+  const expected = declaredRowConfigKey()
+  // one literal in the source ...
+  const literal = source.match(/const ROW_CONFIG_KEY = '([^']+)'/)
+  assert.ok(literal, 'ROW_CONFIG_KEY must be declared as one single-quoted literal')
+  assert.equal(literal[1], expected)
+  // ... and the same value on the real exports the loader reads
+  const { plugin } = loadClientPlugin()
+  assert.equal(plugin.ROW_CONFIG_KEY, expected)
+})
+
+test('rc.2: the row-config occupant honours view=summary vs view=page', () => {
+  const { plugin } = loadClientPlugin()
+  const { ctx, registered } = makeCtx({ services: ['configForms'], slots: ['plugins.row.config'] })
+  plugin.apply(ctx)
+  // Only the rc.2 seat is declared here, exactly like a live rc.2 host: the
+  // legacy settings.plugin.item registration must not fire, and the row seat
+  // must receive our occupant under the ledger key.
+  assert.deepEqual(registered.map((item) => item.options.name), ['plugins.row.config'])
+  const entry = registered[0]
+  assert.equal(entry.options.key, plugin.ROW_CONFIG_KEY)
+
+  const summary = entry.component({ view: 'summary' })
+  assert.equal(summary.type, 'span')
+  assert.equal(summary.props.className, 'dmpRowSummary')
+  // a one-liner only: a single text child, no elements and therefore no controls
+  assert.ok(summary.children.every((child) => typeof child === 'string'))
+  assert.match(summary.children.join(''), /显示状态胶囊/)
+
+  const page = entry.component({ view: 'page' })
+  assert.notEqual(page.type, 'span')
+  assert.equal(typeof page.type, 'function')
+  // the optional `form` prop changes nothing: values still flow through the one
+  // resolved transport, so the page branch is the existing card either way
+  const pageWithForm = entry.component({ view: 'page', form: { state: {}, mutate() {} } })
+  assert.equal(pageWithForm.type, page.type)
+  assert.equal(pageWithForm.props.scope, page.props.scope)
+})
+
+test('legacy 0.1.5 seat still registers on its own host shape', () => {
+  const { plugin } = loadClientPlugin()
+  const { ctx, registered } = makeCtx({ services: ['settingsScope'], slots: ['settings.plugin.item'] })
+  plugin.apply(ctx)
+  assert.deepEqual(
+    registered.map((item) => `${item.options.name}#${item.options.key}`),
+    ['settings.plugin.item#mcp-pill'],
+  )
+})
+
+test('exports.inject hard-gates on no version-dependent settings service', () => {
+  // cordis treats EVERY inject name as a REQUIRED gate (Fiber._refresh() marks
+  // the fiber INACTIVE when one name has no provider), so naming the optional
+  // settings transport here fails the whole Web boot with
+  // "N entries did not activate / waiting for service: <name>". `slots` is
+  // deliberately NOT in the forbidden set: it is the core client slot service
+  // every Web host provides and it is what orders the registrations above after
+  // the slot registry exists — it is not version-dependent. The gate list must
+  // nonetheless stay exactly as it was: any ADDED name fails here.
+  const { plugin } = loadClientPlugin()
+  const inject = Array.from(plugin.inject)
+  assert.ok(Array.isArray(plugin.inject), 'exports.inject must be an array')
+  for (const name of ['settings', 'settingsScope', 'configForms']) {
+    assert.ok(!inject.includes(name), `${name} must never be a hard inject gate`)
+  }
+  assert.deepEqual(inject, ['slots', 'remote', 'remote.settings'])
+  // `remote.settings` is a service PATH, not the bare `settings` service
+  assert.ok(inject.includes('remote.settings'))
 })

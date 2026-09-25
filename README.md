@@ -18,10 +18,16 @@ Global MCP connection status pill for the DSH web UI — official bundle form
 - `POST /api/mcp-pill/set` — `{ id, enabled }` toggles a connection via the
   patch file's `disabled` marker (loader HMR applies it).
 - The pill is hidden by DEFAULT. An official-style expandable Settings Card
-  (`settings.plugin.item` / key `mcp-pill`) owns one switch,
-  「显示状态胶囊」(`pill.enabled`, default `false`); while it is off the pill
-  never mounts visibly, and toggling it takes effect within one status poll
-  (instantly after a save in the same tab).
+  owns one switch, 「显示状态胶囊」(`pill.enabled`, default `false`); while it is
+  off the pill never mounts visibly, and toggling it takes effect within one
+  status poll (instantly after a save in the same tab).
+- That card registers on BOTH settings seats, because DSH moved it: the keyed
+  row seat `plugins.row.config` (key `dsh-mcp-pill#mcp-pill`) on
+  DSH ≥ 0.1.7-rc.2, and the legacy item seat `settings.plugin.item`
+  (key `mcp-pill`) on ≤ 0.1.5. Each seat is declared by one host only, so the two
+  registrations coexist with no version sniffing and the card always has a home;
+  values keep flowing through the single settings transport
+  (`settingsScope` on ≤ 0.1.5, `configForms` on ≥ 0.1.7).
 - The pill snaps to one of the chat input's four corners (drag to switch);
   the anchor is remembered in `localStorage` (`dsh.mcpPill.anchor`).
 - The pill mounts inside the composer seat (same stacking level as the input
@@ -34,7 +40,7 @@ Global MCP connection status pill for the DSH web UI — official bundle form
 dsh plugin --profile web add dsh-mcp-pill
 ```
 
-Restart the existing DSH Web process afterwards: the Host scans the browser plugin roster at startup, so the pill and its Settings card appear only after that restart. Then open **Settings → Plugins → MCP 状态胶囊** and turn on「显示状态胶囊」— the pill is hidden by default.
+Restart the existing DSH Web process afterwards: the Host scans the browser plugin roster at startup, so the pill and its Settings card appear only after that restart. Then open **Settings → Plugins**, open the `dsh-mcp-pill` entry (`mcp-pill` row) and turn on「显示状态胶囊」— the pill is hidden by default. On DSH ≥ 0.1.7-rc.2 that configuration lives in the row's configure control; on ≤ 0.1.5 it is the card in the Settings → Plugins list.
 
 Local development, from this package directory:
 
