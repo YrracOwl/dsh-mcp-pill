@@ -35,6 +35,10 @@ function loadClientPlugin() {
 // fires only when every requested name is provided, exactly like cordis.
 function makeCtx({ services = [], slots = [] } = {}) {
   const registered = []
+  // Slot-registration disposers the plugin actually released, recorded by NAME,
+  // so a test can prove the registration joined the plugin's disposal path
+  // (register → slots.inject return value → disposeSlots → apply's disposer).
+  const disposals = []
   const scope = {
     getSnapshot: () => ({ status: 'ready', writable: true, value: {}, base: {}, user: {}, revision: 1 }),
     subscribe: () => () => {},
@@ -61,11 +65,11 @@ function makeCtx({ services = [], slots = [] } = {}) {
       },
       register(options, component) {
         registered.push({ options, component })
-        return () => {}
+        return () => { disposals.push(options.name) }
       },
     },
   }
-  return { ctx, registered }
+  return { ctx, registered, disposals }
 }
 
 // The key the official plugin-manager looks up: rowConfigKey(pkg.name, row.rowId)
@@ -323,6 +327,91 @@ test('exports.inject hard-gates on no version-dependent settings service', () =>
   assert.deepEqual(inject, ['slots', 'remote', 'remote.settings'])
   // `remote.settings` is a service PATH, not the bare `settings` service
   assert.ok(inject.includes('remote.settings'))
+})
+
+// ── additive seat: the settings.section page (one click deep in 设置) ────────
+//
+// 0.1.7-rc.2 declares the root-scope LIST slot `settings.section` ("one settings
+// page per list entry") beside the row seat. This registration is ADDITIVE and
+// must never gate the plugin: the seat is host-version dependent and is awaited
+// through the same NON-GATING `ctx.inject(['slots'], …)` shape the row seat
+// uses, whose callback returns the registration disposer. The page renders the
+// SAME SettingsCard the row seat renders for `view === 'page'` — one settings
+// UI, one transport, one persistence path.
+
+test('additive settings.section seat carries the exact nav identity', () => {
+  assert.match(source, /const registerSettingsSection = \(sctx\) => \{/)
+  assert.match(source, /sctx\.slots\.inject\('settings\.section', \(\) => sctx\.slots\.register\(\{/)
+  assert.match(source, /name: 'settings\.section'/)
+  assert.match(source, /id: 'yotk-mcp-pill'/)
+  assert.match(source, /order: 60/)
+  // label is a THUNK: the shell re-reads it on every projection instead of
+  // caching registrant-localized text
+  assert.match(source, /label: \(\) => 'YOTK · MCP Pill'/)
+  // registered from inside the non-gating slots wait, and the disposer the
+  // callback returns joins the plugin's disposal path
+  assert.match(source, /ctx\.inject\(\['slots'\], registerSettingsSection\)/)
+  assert.match(source, /disposeSlots\.push\(sctx\.slots\.inject\('settings\.section'/)
+  // the seat declares exactly { id, order, label } — no invented contract keys
+  assert.doesNotMatch(source, /name: 'settings\.section',\s*\n\s*locale:/)
+})
+
+test('settings.section fires without any settings transport and never gates', () => {
+  const { plugin } = loadClientPlugin()
+  // A host with the two card seats but NO settings transport at all: the seat
+  // registration must still fire (non-gating), exactly like the row seat.
+  const { ctx, registered, disposals } = makeCtx({
+    services: [],
+    slots: ['settings.section', 'plugins.row.config'],
+  })
+  const dispose = plugin.apply(ctx)
+  const section = registered.find((item) => item.options.name === 'settings.section')
+  assert.ok(section, 'the settings.section occupant must register where the seat is declared')
+  assert.deepEqual(Object.keys(section.options).sort(), ['id', 'label', 'name', 'order'])
+  assert.equal(section.options.id, 'yotk-mcp-pill')
+  assert.equal(section.options.order, 60)
+  assert.equal(typeof section.options.label, 'function')
+  assert.equal(section.options.label(), 'YOTK · MCP Pill')
+  // the registration is owned by the plugin: the callback's returned disposer
+  // is what the plugin's own disposer releases
+  assert.deepEqual(disposals, [], 'nothing is released before the plugin is disposed')
+  dispose()
+  assert.deepEqual(disposals.slice().sort(), ['plugins.row.config', 'settings.section'])
+
+  // A host that does not declare the seat: nothing registers there and apply
+  // still succeeds, so the seat can never gate activation.
+  const absent = makeCtx({ services: [], slots: [] })
+  assert.equal(typeof plugin.apply(absent.ctx), 'function')
+  assert.deepEqual(absent.registered, [])
+})
+
+test('the settings.section page renders the same card component as the row page', () => {
+  const { plugin } = loadClientPlugin()
+  const { ctx, registered } = makeCtx({
+    services: ['configForms'],
+    slots: ['settings.section', 'plugins.row.config'],
+  })
+  plugin.apply(ctx)
+  const section = registered.find((item) => item.options.name === 'settings.section')
+  const row = registered.find((item) => item.options.name === 'plugins.row.config')
+  assert.ok(section, 'expected a settings.section occupant')
+  assert.ok(row, 'expected a plugins.row.config occupant')
+
+  // The section owner shares `close` and nothing else ...
+  const sectionPage = section.component({ close: () => {} })
+  const rowPage = row.component({ view: 'page' })
+  // ... and it renders the SAME component the row seat renders for view=page:
+  // one settings UI, one read path, one write path.
+  assert.equal(typeof sectionPage.type, 'function')
+  assert.equal(sectionPage.type, rowPage.type)
+  assert.equal(sectionPage.props.scope, rowPage.props.scope)
+  // neither `close` nor the host-owned optional `form` prop is consumed
+  assert.deepEqual(Object.keys(sectionPage.props).sort(), ['api', 'scope'])
+  const passedForm = section.component({ close: () => {}, form: { state: {}, mutate() {} } })
+  assert.equal(passedForm.type, sectionPage.type)
+  assert.equal(passedForm.props.scope, sectionPage.props.scope)
+  // a one-liner is still what the row seat's summary branch renders
+  assert.equal(row.component({ view: 'summary' }).type, 'span')
 })
 
 // ── manifest: the schemastery FLOOR decides whether a settings page exists ───

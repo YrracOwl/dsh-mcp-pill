@@ -27,7 +27,11 @@ Global MCP connection status pill for the DSH web UI — official bundle form
   (key `mcp-pill`) on ≤ 0.1.5. Each seat is declared by one host only, so the two
   registrations coexist with no version sniffing and the card always has a home;
   values keep flowing through the single settings transport
-  (`settingsScope` on ≤ 0.1.5, `configForms` on ≥ 0.1.7).
+  (`settingsScope` on ≤ 0.1.5, `configForms` on ≥ 0.1.7). The same card is also
+  registered on the root-scope `settings.section` list seat — identity
+  `YOTK · MCP Pill`, id `yotk-mcp-pill`, order `60` — so on a host that declares
+  that seat it is a first-class page one click deep in 设置, additive beside the
+  row seat and never a gate.
 - `@deepseek-ai/schemastery` is a private `dependencies` entry whose floor must be
   ≥ 3.18.4 (`^3.18.4`): the profile hoists an older line (3.18.2) that satisfies a
   lower floor, and an entry whose Config exposes no volatile field is dropped from
