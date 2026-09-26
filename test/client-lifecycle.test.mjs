@@ -12,18 +12,28 @@ const source = fs.readFileSync(new URL('../lib/client.js', import.meta.url), 'ut
 // out on a document-less host. Evaluating it here gives the real `exports`
 // (inject gate, ROW_CONFIG_KEY) and the real row-config component, which is
 // stronger than matching source text.
-function loadClientPlugin() {
+// `reactHooks` lets a test hand the bundle a real-enough React: without it the
+// fake has no hooks, which is all the registration tests need.
+function loadClientPlugin(reactHooks = {}) {
   let spec = null
   const sandbox = {
     // `apply` returns early unless `document` exists; nothing in the SlotRegistrar
-    // path this test drives touches the DOM beyond that probe.
-    document: {},
+    // path this test drives touches the DOM beyond that probe. Rendering the card
+    // (see createHookHost below) also needs the two calls ensureCardStyles() makes.
+    document: {
+      querySelector: () => undefined,
+      createElement: () => ({ dataset: {}, textContent: '' }),
+      head: { appendChild() {} },
+    },
     window: { __ModuleLoader__: { load(captured) { spec = captured } } },
   }
   vm.createContext(sandbox)
   vm.runInContext(source, sandbox, { filename: 'lib/client.js' })
   assert.ok(spec && typeof spec.factory === 'function', 'bundle must call window.__ModuleLoader__.load({ factory })')
-  const react = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }) }
+  const react = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    ...reactHooks,
+  }
   const plugin = spec.factory((id) => {
     if (id === 'react') return react
     throw new Error('unexpected require(' + id + ')')
@@ -405,13 +415,101 @@ test('the settings.section page renders the same card component as the row page'
   assert.equal(typeof sectionPage.type, 'function')
   assert.equal(sectionPage.type, rowPage.type)
   assert.equal(sectionPage.props.scope, rowPage.props.scope)
-  // neither `close` nor the host-owned optional `form` prop is consumed
-  assert.deepEqual(Object.keys(sectionPage.props).sort(), ['api', 'scope'])
+  // neither `close` nor the host-owned optional `form` prop is consumed. The
+  // only extra prop is the disclosure default: this page holds ONE card, so it
+  // must start expanded (pinned behaviourally below).
+  assert.deepEqual(Object.keys(sectionPage.props).sort(), ['api', 'defaultOpen', 'scope'])
   const passedForm = section.component({ close: () => {}, form: { state: {}, mutate() {} } })
   assert.equal(passedForm.type, sectionPage.type)
   assert.equal(passedForm.props.scope, sectionPage.props.scope)
   // a one-liner is still what the row seat's summary branch renders
   assert.equal(row.component({ view: 'summary' }).type, 'span')
+})
+
+// ── the card's disclosure default: expanded where the card renders alone ────
+//
+// Two seats put this ONE card on a page of its own — the row seat's
+// `view === 'page'` branch and the additive `settings.section` page — so its
+// body must start expanded there, while the header button keeps folding it back
+// up. The card is the real SettingsCard and the hooks are a minimal host that
+// keeps one state slot per useState call across render passes, so `header.onClick`
+// followed by a re-render IS the user's click: no source-text matching is involved.
+function createHookHost() {
+  let state = []
+  let cursor = 0
+  return {
+    hooks: {
+      useState(initial) {
+        const index = cursor++
+        if (!(index in state)) state[index] = initial
+        const set = (next) => { state[index] = typeof next === 'function' ? next(state[index]) : next }
+        return [state[index], set]
+      },
+      useEffect() { cursor++; return undefined },
+    },
+    // a FRESH mount: React would own new state slots for a new card instance
+    mount() { state = []; cursor = 0 },
+    // one render pass: hook slots are addressed from 0 again, state survives
+    render(component, props) { cursor = 0; return component(props) },
+  }
+}
+
+test('the card body starts expanded on both single-card pages and the header still collapses it', () => {
+  const host = createHookHost()
+  const { plugin } = loadClientPlugin(host.hooks)
+  const { ctx, registered } = makeCtx({
+    services: ['configForms'],
+    slots: ['settings.section', 'plugins.row.config'],
+  })
+  plugin.apply(ctx)
+  const section = registered.find((item) => item.options.name === 'settings.section')
+  const row = registered.find((item) => item.options.name === 'plugins.row.config')
+
+  for (const [seat, element] of [
+    ['settings.section', section.component({ close: () => {} })],
+    ["plugins.row.config view='page'", row.component({ view: 'page' })],
+  ]) {
+    // the seat asks for the expanded disclosure ...
+    assert.equal(element.props.defaultOpen, true, `${seat} must ask for an expanded card`)
+
+    host.mount()
+    const expanded = host.render(element.type, element.props)
+    // ... and the first render shows it open: body present, chevron flipped,
+    // aria-expanded true
+    assert.equal(expanded.props.className, 'dmpCard dmpCardOpen', `${seat} must start expanded`)
+    assert.equal(expanded.children[0].props['aria-expanded'], true)
+    assert.equal(expanded.children[1].props.className, 'dmpBody')
+
+    // the manual toggle still folds it back up
+    expanded.children[0].props.onClick()
+    const collapsed = host.render(element.type, element.props)
+    assert.equal(collapsed.props.className, 'dmpCard', `${seat} must collapse on the header click`)
+    assert.equal(collapsed.children[0].props['aria-expanded'], false)
+    assert.equal(collapsed.children[1], null)
+
+    // ... and expands it again, so the disclosure stays a two-way toggle
+    collapsed.children[0].props.onClick()
+    const reopened = host.render(element.type, element.props)
+    assert.equal(reopened.props.className, 'dmpCard dmpCardOpen')
+    assert.equal(reopened.children[1].props.className, 'dmpBody')
+  }
+
+  // the legacy ≤ 0.1.5 seat is untouched: its card still sits in the Plugins list
+  // of many cards, which is the reason the collapsed default existed, so it asks
+  // for nothing and starts collapsed there.
+  const { ctx: legacyCtx, registered: legacyRegistered } = makeCtx({
+    services: ['settingsScope'],
+    slots: ['settings.plugin.item'],
+  })
+  loadClientPlugin(host.hooks).plugin.apply(legacyCtx)
+  const legacy = legacyRegistered[0]
+  assert.equal(legacy.options.name, 'settings.plugin.item')
+  const legacyElement = legacy.component()
+  assert.equal(legacyElement.props.defaultOpen, undefined, 'the legacy list seat asks for nothing')
+  host.mount()
+  const legacyCard = host.render(legacyElement.type, legacyElement.props)
+  assert.equal(legacyCard.props.className, 'dmpCard')
+  assert.equal(legacyCard.children[1], null)
 })
 
 // ── manifest: the schemastery FLOOR decides whether a settings page exists ───
